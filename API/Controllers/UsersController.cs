@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using API.DTOs;
 using API.Entities;
 using API.Extensions;
@@ -5,40 +6,42 @@ using API.Interfaces;
 using AutoMapper;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+
 namespace API.Controllers;
 
 [Authorize]
-public class UsersController(IUserRepository userRepository, IMapper mapper,
+public class UsersController(IUserRepository userRepository, IMapper mapper, 
     IPhotoService photoService) : BaseApiController
 {
     [HttpGet]
-    public async Task<ActionResult<IEnumerable<MemberDto>>> GetUsers()
+    public async Task<ActionResult<IEnumerable<MemberDto>>> GetUsers([FromQuery]UserParams userParams)
     {
-        var users = await userRepository.GetMembersAsync();
-        
+        userParams.CurrentUsername = User.GetUsername();
+        var users = await userRepository.GetMembersAsync(userParams);
+
+        Response.AddPaginationHeader(users);
+
         return Ok(users);
     }
 
-    [HttpGet("{username}")] // api/users/
+    [HttpGet("{username}")]  // /api/users/2
     public async Task<ActionResult<MemberDto>> GetUser(string username)
     {
         var user = await userRepository.GetMemberAsync(username);
 
         if (user == null) return NotFound();
-        
+
         return user;
     }
 
     [HttpPut]
-    public async Task<ActionResult> UpdateUser(MemberUpdateDTO memberUpdateDTO)
+    public async Task<ActionResult> UpdateUser(MemberUpdateDto memberUpdateDto)
     {
         var user = await userRepository.GetUserByUsernameAsync(User.GetUsername());
 
         if (user == null) return BadRequest("Could not find user");
 
-        mapper.Map(memberUpdateDTO, user);
-
-        userRepository.Update(user);
+        mapper.Map(memberUpdateDto, user);
 
         if (await userRepository.SaveAllAsync()) return NoContent();
 
@@ -64,7 +67,6 @@ public class UsersController(IUserRepository userRepository, IMapper mapper,
 
         if (user.Photos.Count == 0) photo.IsMain = true;
 
-
         user.Photos.Add(photo);
 
         if (await userRepository.SaveAllAsync()) 
@@ -73,6 +75,7 @@ public class UsersController(IUserRepository userRepository, IMapper mapper,
 
         return BadRequest("Problem adding photo");
     }
+
     [HttpPut("set-main-photo/{photoId:int}")]
     public async Task<ActionResult> SetMainPhoto(int photoId)
     {
